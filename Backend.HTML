@@ -1,0 +1,46 @@
+const SerialPort = require('serialport');
+const Readline = require('@serialport/parser-readline');
+const express = require('express');
+const WebSocket = require('ws');
+
+const app = express();
+const port = 3000;
+
+// Serve static frontend files from 'public' folder
+app.use(express.static('public'));
+
+const server = app.listen(port, () => {
+  console.log(`Server listening at http://localhost:${port}`);
+});
+
+// WebSocket server
+const wss = new WebSocket.Server({ server });
+
+// Broadcast function to send data to all clients
+function broadcast(data) {
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(data));
+    }
+  });
+}
+
+// Replace with your Arduino serial port name, e.g. COM3 (Windows) or /dev/ttyUSB0 (Linux)
+const arduinoPortName = '/dev/ttyUSB0'; 
+
+const portArduino = new SerialPort(arduinoPortName, {
+  baudRate: 9600,
+});
+
+const parser = portArduino.pipe(new Readline({ delimiter: '\n' }));
+
+parser.on('data', line => {
+  console.log('Received from Arduino:', line);
+  // Expect data format: "TEMP:36.5,SpO2:97"
+  const match = line.match(/TEMP:([\d.]+),SpO2:(\d+)/);
+  if (match) {
+    const temp = parseFloat(match[1]);
+    const spo2 = parseInt(match[2], 10);
+    broadcast({ temperature: temp, spo2: spo2 });
+  }
+});
